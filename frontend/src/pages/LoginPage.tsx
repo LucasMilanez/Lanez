@@ -2,21 +2,31 @@ import { useState, useCallback } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
-  Play,
-  Terminal,
-  Copy,
-  User,
-  Search,
+  ArrowDown,
+  ArrowRight,
+  ArrowUpRight,
   Brain,
   Calendar,
+  Check,
+  Copy,
+  KeyRound,
   Loader2,
+  Lock,
+  Search,
+  ShieldCheck,
+  Timer,
+  UserCheck,
 } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
+import { ThemeToggle } from "@/theme/ThemeToggle";
+import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
 const GITHUB_URL = "https://github.com/LucasMilanez/Lanez";
+const MCP_SPEC_URL = "https://modelcontextprotocol.io";
+const MCP_URL = "https://lanez-app.fly.dev/mcp";
 
 function GithubIcon({ className }: { className?: string }) {
   return (
@@ -26,92 +36,216 @@ function GithubIcon({ className }: { className?: string }) {
   );
 }
 
-// HUD card wrapper (adds corner brackets)
-function Hud({ className, children }: { className?: string; children: React.ReactNode }) {
+function LanezMark({ className }: { className?: string }) {
   return (
-    <div className={cn("hud", className)}>
-      <span className="corner-bl" />
-      <span className="corner-br" />
-      {children}
-    </div>
+    <svg className={className} viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="7" className="fill-brand" />
+      <path d="M8 11h9M8 21h16M15 16h9" stroke="white" strokeWidth="2.6" strokeLinecap="round" />
+    </svg>
   );
 }
 
-// ─── log entries (duplicated inside component for seamless loop) ──────────────
+function Section({ id, label, title, intro, className, children }: {
+  id?: string;
+  label: string;
+  title: string;
+  intro?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section id={id} className={cn("scroll-mt-16 border-t", className)}>
+      <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 lg:py-24">
+        <div className="max-w-2xl">
+          <p className="text-sm font-medium text-brand">{label}</p>
+          <h2 className="mt-2 text-3xl font-semibold tracking-tight text-balance sm:text-4xl">{title}</h2>
+          {intro && <p className="mt-4 text-base leading-relaxed text-muted-foreground">{intro}</p>}
+        </div>
+        <div className="mt-12">{children}</div>
+      </div>
+    </section>
+  );
+}
 
-const LOG_ENTRIES = [
-  { time: "14:22:08", type: "mcp.call",  typeCls: "text-[#22D3EE]", msg: "search_inbox",   meta: "→ 12 hits · 1.2s" },
-  { time: "14:22:04", type: "briefing",  typeCls: "text-[#5EEAD4]", msg: '"Q3 Launch Sync"', meta: "generated · 4.1s" },
-  { time: "14:21:51", type: "mcp.call",  typeCls: "text-[#22D3EE]", msg: "recall_memory",  meta: "→ 3 hits · 0.4s" },
-  { time: "14:21:33", type: "webhook",   typeCls: "text-[#5EEAD4]", msg: "graph.calendar", meta: "received · 0.1s" },
-  { time: "14:21:18", type: "mcp.call",  typeCls: "text-[#22D3EE]", msg: "read_note",      meta: "→ 1 hit · 0.8s" },
-  { time: "14:20:55", type: "auth.refresh", typeCls: "text-[#FACC15]", msg: "graph.token", meta: "ok · 0.3s" },
-  { time: "14:20:31", type: "mcp.call",  typeCls: "text-[#22D3EE]", msg: "list_events",   meta: "→ 7 hits · 0.6s" },
-  { time: "14:20:09", type: "embed",     typeCls: "text-[#5EEAD4]", msg: "batch[24]",     meta: "indexed · 2.0s" },
+// ─── code blocks ─────────────────────────────────────────────────────────────
+
+// Minimal JSON highlighter: keys, strings, everything else plain.
+function highlightJson(src: string) {
+  const parts = src.split(/("(?:[^"\\]|\\.)*")(\s*:)?/g);
+  const out: React.ReactNode[] = [];
+  for (let i = 0; i < parts.length; i += 3) {
+    if (parts[i]) out.push(parts[i]);
+    const str = parts[i + 1];
+    const colon = parts[i + 2];
+    if (str) {
+      out.push(
+        <span key={i} className={colon ? "text-sky-300" : "text-amber-200"}>{str}</span>,
+      );
+      if (colon) out.push(colon);
+    }
+  }
+  return out;
+}
+
+function CodeBlock({ code, className }: { code: string; className?: string }) {
+  return (
+    <pre className={cn("overflow-x-auto p-4 font-mono text-[12.5px] leading-relaxed text-slate-300", className)}>
+      <code>{highlightJson(code)}</code>
+    </pre>
+  );
+}
+
+const RPC_REQUEST = `{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "method": "tools/call",
+  "params": {
+    "name": "search_emails",
+    "arguments": { "query": "Q3 launch", "limit": 5 }
+  }
+}`;
+
+const RPC_RESPONSE = `{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "result": {
+    "content": [
+      { "type": "text", "text": "5 messages found ..." }
+    ]
+  }
+}`;
+
+const CLIENT_CONFIGS = [
+  {
+    id: "claude",
+    label: "Claude Desktop",
+    file: "claude_desktop_config.json",
+    code: `{
+  "mcpServers": {
+    "lanez": {
+      "command": "npx",
+      "args": [
+        "-y", "mcp-remote",
+        "${MCP_URL}",
+        "--header", "Authorization:\${AUTH_HEADER}"
+      ],
+      "env": { "AUTH_HEADER": "Bearer <token>" }
+    }
+  }
+}`,
+  },
+  {
+    id: "cursor",
+    label: "Cursor",
+    file: "~/.cursor/mcp.json",
+    code: `{
+  "mcpServers": {
+    "lanez": {
+      "url": "${MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer <token>"
+      }
+    }
+  }
+}`,
+  },
 ] as const;
 
-const STACK_ROWS = [
-  { idx: "001", name: "FastAPI",              dot: "#10B981", role: "http server",     ver: "0.111.x",          notes: "async python, openapi out of box" },
-  { idx: "002", name: "PostgreSQL",           dot: "#38BDF8", role: "primary store",   ver: "16.2 + pgvector",  notes: "bm25 + pgvector hybrid retrieval" },
-  { idx: "003", name: "Redis",                dot: "#EF4444", role: "queue + cache",   ver: "7.4",              notes: "rq workers, sliding window" },
-  { idx: "004", name: "Sentence Transformers",dot: "#A78BFA", role: "embeddings",      ver: "all-MiniLM-L6-v2", notes: "cpu inference, 384-dim" },
-  { idx: "005", name: "Claude Haiku",         dot: "#22D3EE", role: "briefing.gen",    ver: "4.5",              notes: "synthesis pass over retrieval hits" },
-  { idx: "006", name: "Groq Whisper",         dot: "#F59E0B", role: "voice.transcribe",ver: "large-v3-turbo",   notes: "sub-second on 60s audio" },
-  { idx: "007", name: "MCP",                  dot: "#5EEAD4", role: "protocol",        ver: "2025-06-18",       notes: "streamable http transport" },
-  { idx: "008", name: "React + Vite",         dot: "#FB7185", role: "admin ui",        ver: "19 / 6",           notes: "tailwind, shadcn primitives" },
+type ClientId = (typeof CLIENT_CONFIGS)[number]["id"];
+
+// ─── data ────────────────────────────────────────────────────────────────────
+
+// Mirrors the tool definitions in app/routers/mcp.py
+const TOOLS = [
+  { name: "get_calendar_events", source: "Calendar", desc: "List Outlook calendar events within a date range." },
+  { name: "search_emails",       source: "Mail",     desc: "Search Outlook mail by free text." },
+  { name: "get_onenote_pages",   source: "OneNote",  desc: "List OneNote pages, optionally including their full content." },
+  { name: "search_files",        source: "OneDrive", desc: "Search OneDrive and SharePoint by name or content; reads .txt, .md, .csv and .docx." },
+  { name: "read_file_by_url",    source: "OneDrive", desc: "Read a file from a direct OneDrive or SharePoint link." },
+  { name: "semantic_search",     source: "Index",    desc: "Search by meaning across all Microsoft 365 sources at once." },
+  { name: "save_memory",         source: "Memory",   desc: "Store a decision, preference or fact for future sessions." },
+  { name: "recall_memory",       source: "Memory",   desc: "Retrieve memories relevant to the current conversation." },
+  { name: "get_briefing",        source: "Briefing", desc: "Fetch the generated briefing for a calendar event." },
+  { name: "web_search",          source: "Web",      desc: "Search the web through a self-hosted SearXNG instance." },
 ] as const;
 
-// ─── sub-sections ─────────────────────────────────────────────────────────────
+const FEATURES = [
+  {
+    icon: Search,
+    title: "Semantic search",
+    desc: "Mail, notes and files are embedded and indexed in PostgreSQL with pgvector, so the assistant finds content by meaning rather than exact keywords.",
+    specs: [["Index", "pgvector, cosine distance"], ["Embeddings", "all-MiniLM-L6-v2 (384-d)"]],
+  },
+  {
+    icon: Calendar,
+    title: "Meeting briefings",
+    desc: "When a calendar event is created or updated, Lanez prepares a briefing with attendees, related email threads and prior decisions.",
+    specs: [["Trigger", "Microsoft Graph webhooks"], ["Model", "Claude Haiku 4.5"]],
+  },
+  {
+    icon: Brain,
+    title: "Persistent memory",
+    desc: "The assistant can save and recall preferences, terminology and recurring decisions across sessions, isolated per user.",
+    specs: [["Storage", "PostgreSQL + pgvector"], ["Scope", "Per user"]],
+  },
+] as const;
 
+const SECURITY = [
+  { icon: KeyRound,    title: "OAuth 2.0 with PKCE",       desc: "Sign-in uses the authorization code flow with PKCE against Microsoft Entra ID." },
+  { icon: ShieldCheck, title: "Read-only Graph scopes",    desc: "Calendars.Read, Mail.Read, Notes.Read, Files.Read, Sites.Read.All and User.Read." },
+  { icon: Lock,        title: "Encrypted tokens at rest",  desc: "Microsoft tokens are encrypted with Fernet; the key is derived with PBKDF2 (480,000 iterations)." },
+  { icon: Timer,       title: "Short-lived MCP tokens",    desc: "Bearer tokens issued for MCP clients expire after 7 days." },
+  { icon: ShieldCheck, title: "CSRF and rate limiting",    desc: "Cookie-authenticated requests require a CSRF header, and sensitive endpoints are rate limited." },
+  { icon: UserCheck,   title: "Email allowlist",           desc: "Optionally restrict sign-in to specific accounts with ALLOWED_EMAILS." },
+] as const;
+
+const STACK = [
+  ["API", "FastAPI"],
+  ["Database", "PostgreSQL 16 + pgvector"],
+  ["Cache", "Redis 7"],
+  ["Embeddings", "Sentence Transformers"],
+  ["Briefings", "Claude Haiku 4.5"],
+  ["Transcription", "Groq Whisper"],
+  ["Dashboard", "React 19 + Vite"],
+  ["Protocol", "MCP 2025-06-18"],
+] as const;
+
+// ─── sections ────────────────────────────────────────────────────────────────
 
 function SiteHeader({ onLogin, isRedirecting }: { onLogin: () => void; isRedirecting: boolean }) {
   return (
-    <header className="sticky top-0 z-40 border-b border-[#1B2029] bg-[#06070A]/85 backdrop-blur-xl">
-      <div className="max-w-[1320px] mx-auto px-6 h-14 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          {/* Logo mark */}
-          <div className="flex items-center gap-2.5">
-            <span className="relative inline-flex h-7 w-7 items-center justify-center rounded-[6px] border border-[#22D3EE]/50 bg-[#22D3EE]/10">
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="#22D3EE" strokeWidth="2.6" strokeLinecap="square">
-                <path d="M4 8 H12" /><path d="M4 16 H20" /><path d="M12 12 H20" opacity=".55" />
-              </svg>
-              <span className="absolute -top-1 -right-1 h-1.5 w-1.5 rounded-full bg-[#22D3EE] shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
-            </span>
-            <div className="leading-tight">
-              <div className="text-[14px] font-bold tracking-tight text-[#E8ECEF]">LANEZ</div>
-              <div className="font-mono text-[9.5px] text-[#7A8290] -mt-0.5">MCP SERVER · v0.1</div>
-            </div>
-          </div>
-          {/* Nav links */}
-          <span className="hidden md:inline-flex items-center gap-2 ml-3 font-mono text-[11px] text-[#7A8290]">
-            <span className="text-[#4F5664]">/</span>
-            <a href="#overview" className="hover:text-[#E8ECEF] transition-colors">overview</a>
-            <span className="text-[#4F5664]">/</span>
-            <a href="#modules" className="hover:text-[#E8ECEF] transition-colors">modules</a>
-            <span className="text-[#4F5664]">/</span>
-            <a href="#connect" className="hover:text-[#E8ECEF] transition-colors">connect</a>
-            <span className="text-[#4F5664]">/</span>
-            <a href="#stack" className="hover:text-[#E8ECEF] transition-colors">stack</a>
-          </span>
+    <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur">
+      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
+        <div className="flex items-center gap-8">
+          <a href="#top" className="flex items-center gap-2" aria-label="Lanez — home">
+            <LanezMark className="h-6 w-6" />
+            <span className="text-[15px] font-semibold tracking-tight">Lanez</span>
+          </a>
+          <nav aria-label="Primary" className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
+            <a href="#features" className="transition-colors hover:text-foreground">Features</a>
+            <a href="#tools" className="transition-colors hover:text-foreground">Tools</a>
+            <a href="#setup" className="transition-colors hover:text-foreground">Setup</a>
+            <a href="#security" className="transition-colors hover:text-foreground">Security</a>
+          </nav>
         </div>
-
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          <ThemeToggle />
           <a
             href={GITHUB_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="btn-ghost-lp rounded-md px-3 py-1.5 font-mono text-[11px] inline-flex items-center gap-2"
+            aria-label="GitHub repository"
+            className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "h-8 w-8")}
           >
-            <GithubIcon className="h-3 w-3" />
-            github
+            <GithubIcon className="h-4 w-4" />
           </a>
           <button
             onClick={onLogin}
             disabled={isRedirecting}
-            className="btn-ghost-lp rounded-md px-3 py-1.5 font-mono text-[11px] inline-flex items-center gap-1.5"
+            className={cn(buttonVariants({ size: "sm" }), "ml-1.5 h-8")}
           >
-            {isRedirecting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-            admin →
+            {isRedirecting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Sign in
           </button>
         </div>
       </div>
@@ -119,466 +253,334 @@ function SiteHeader({ onLogin, isRedirecting }: { onLogin: () => void; isRedirec
   );
 }
 
-function TelemetryHUD() {
+function Hero() {
   return (
-    <div className="col-span-12 lg:col-span-5">
-      <Hud className="border border-[#1B2029] bg-[#0E1116]/80 backdrop-blur-sm">
-        {/* Panel header */}
-        <div className="flex items-center justify-between border-b border-[#1B2029] px-4 h-9">
-          <div className="flex items-center gap-2 font-mono text-[10.5px] tracking-[0.16em] text-[#7A8290]">
-            <span className="h-1.5 w-1.5 bg-[#22D3EE]" />
-            LIVE.TELEMETRY
-            <span
-              className="ml-1 px-1.5 py-px rounded-sm border border-[#FACC15]/40 bg-[#FACC15]/[0.08] text-[#FACC15] text-[8.5px] tracking-[0.18em]"
-              title="Illustrative data. Not real user telemetry."
-            >
-              DEMO
-            </span>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="h-2 w-2 rounded-full bg-[#FF7849]/80" />
-            <span className="h-2 w-2 rounded-full bg-[#FACC15]/80" />
-            <span className="h-2 w-2 rounded-full bg-[#22D3EE]" />
-          </div>
+    <section id="top" className="mx-auto grid max-w-6xl gap-12 px-4 pb-20 pt-16 sm:px-6 lg:grid-cols-[1.1fr_1fr] lg:gap-16 lg:pb-24 lg:pt-24">
+      <div>
+        <a
+          href={MCP_SPEC_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-full border bg-card px-3 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-brand" />
+          Model Context Protocol server · spec 2025-06-18
+          <ArrowUpRight className="h-3 w-3" />
+        </a>
+
+        <h1 className="mt-6 text-4xl font-semibold tracking-tight text-balance sm:text-5xl lg:text-[56px] lg:leading-[1.05]">
+          Microsoft 365 context for any AI assistant
+        </h1>
+
+        <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
+          Lanez is an open-source, self-hosted MCP server that gives Claude, Cursor and other
+          MCP clients read-only access to Outlook mail, calendar, OneNote and OneDrive — with
+          semantic search, persistent memory and meeting briefings.
+        </p>
+
+        <div className="mt-8 flex flex-wrap gap-3">
+          <a href="#setup" className={cn(buttonVariants({ size: "lg" }), "h-11")}>
+            Get started
+            <ArrowRight className="h-4 w-4" />
+          </a>
+          <a
+            href={GITHUB_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-11")}
+          >
+            <GithubIcon className="h-4 w-4" />
+            View on GitHub
+          </a>
         </div>
 
-        {/* Data flow grid */}
-        <div className="px-5 pt-5 pb-2">
-          <div className="grid grid-cols-3 gap-3">
-            {/* Source */}
-            <div className="border border-[#1B2029]/80 bg-[#06070A]/60 p-3">
-              <div className="font-mono text-[9px] tracking-[0.16em] text-[#4F5664]">[ SOURCE ]</div>
-              <div className="font-mono text-[10.5px] text-[#E8ECEF] mt-1">M365</div>
-              <ul className="mt-3 space-y-1.5 font-mono text-[10.5px] text-[#E8ECEF]/85">
-                <li className="flex items-center gap-1.5"><Calendar className="h-2.5 w-2.5 text-[#5EEAD4]" />calendar</li>
-                <li className="flex items-center gap-1.5"><Search className="h-2.5 w-2.5 text-[#5EEAD4]" />mail</li>
-                <li className="flex items-center gap-1.5"><Brain className="h-2.5 w-2.5 text-[#5EEAD4]" />onenote</li>
-                <li className="flex items-center gap-1.5"><Search className="h-2.5 w-2.5 text-[#5EEAD4]" />onedrive</li>
-              </ul>
-            </div>
-            {/* Core */}
-            <div className="border border-[#22D3EE]/40 bg-[#22D3EE]/[0.04] p-3 relative">
-              <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 bg-[#22D3EE] shadow-[0_0_8px_rgba(34,211,238,0.7)]" />
-              <div className="font-mono text-[9px] tracking-[0.16em] text-[#22D3EE]/90">[ CORE ]</div>
-              <div className="font-mono text-[10.5px] text-[#E8ECEF] mt-1">LANEZ</div>
-              <ul className="mt-3 space-y-1.5 font-mono text-[10.5px] text-[#E8ECEF]/85">
-                {["ingest", "embed", "index", "mcp.serve"].map((s) => (
-                  <li key={s} className="flex items-center gap-1.5">
-                    <span className="text-[#22D3EE]">▸</span>{s}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            {/* Client */}
-            <div className="border border-[#1B2029]/80 bg-[#06070A]/60 p-3">
-              <div className="font-mono text-[9px] tracking-[0.16em] text-[#4F5664]">[ CLIENT ]</div>
-              <div className="font-mono text-[10.5px] text-[#E8ECEF] mt-1">MCP</div>
-              <ul className="mt-3 space-y-1.5 font-mono text-[10.5px] text-[#E8ECEF]/85">
-                {["claude", "cursor", "continue", "custom"].map((c) => (
-                  <li key={c} className="flex items-center gap-1.5">
-                    <span className="text-[#5EEAD4]">◇</span>{c}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-
-          {/* Animated flow SVG */}
-          <svg viewBox="0 0 600 30" className="block w-full h-7 mt-2" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="g1" x1="0" x2="1">
-                <stop offset="0" stopColor="#5EEAD4" stopOpacity="0.0" />
-                <stop offset=".4" stopColor="#5EEAD4" stopOpacity="0.6" />
-                <stop offset="1" stopColor="#22D3EE" stopOpacity="0.9" />
-              </linearGradient>
-              <linearGradient id="g2" x1="0" x2="1">
-                <stop offset="0" stopColor="#22D3EE" stopOpacity="0.9" />
-                <stop offset=".6" stopColor="#5EEAD4" stopOpacity="0.5" />
-                <stop offset="1" stopColor="#5EEAD4" stopOpacity="0.0" />
-              </linearGradient>
-            </defs>
-            <path className="flow-path" d="M 5 15 L 200 15" stroke="url(#g1)" strokeWidth="1.5" fill="none" />
-            <path className="flow-path" d="M 400 15 L 595 15" stroke="url(#g2)" strokeWidth="1.5" fill="none" style={{ animationDelay: "-1s" }} />
-            <circle r="2" fill="#5EEAD4">
-              <animateMotion dur="2.4s" repeatCount="indefinite" path="M 5 15 L 200 15" />
-            </circle>
-            <circle r="2" fill="#22D3EE">
-              <animateMotion dur="2.4s" begin="-0.8s" repeatCount="indefinite" path="M 400 15 L 595 15" />
-            </circle>
-          </svg>
-        </div>
-
-        {/* Stats strip */}
-        <div className="border-t border-[#1B2029] px-5 py-4 grid grid-cols-3 gap-3">
-          {[
-            { label: "TOOLS",    value: "09",   cls: "text-[#22D3EE]" },
-            { label: "SERVICES", value: "04",   cls: "text-[#E8ECEF]" },
-            { label: "PROTOCOL", value: "MCP",  cls: "text-[#E8ECEF]" },
-          ].map(({ label, value, cls }) => (
-            <div key={label}>
-              <div className="font-mono text-[9px] tracking-[0.16em] text-[#4F5664]">{label}</div>
-              <div className={cn("font-mono text-[22px] mt-0.5 tabular-nums leading-none", cls)}>{value}</div>
-            </div>
+        <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
+          {["MIT licensed", "Self-hosted", "Read-only Graph scopes"].map((item) => (
+            <li key={item} className="inline-flex items-center gap-1.5">
+              <Check className="h-4 w-4 text-brand" />
+              {item}
+            </li>
           ))}
-        </div>
-
-        {/* Live log */}
-        <div className="border-t border-[#1B2029] bg-[#06070A]/80 h-[140px] overflow-hidden relative">
-          <div className="absolute top-1.5 left-3 font-mono text-[9px] tracking-[0.16em] text-[#4F5664] z-10 bg-[#06070A]/80 px-1">LOG.STREAM</div>
-          <div className="log-stream font-mono text-[11px] leading-[1.55] py-3 px-4 space-y-0.5">
-            {[...LOG_ENTRIES, ...LOG_ENTRIES].map((e, i) => (
-              <div key={i}>
-                <span className="text-[#4F5664]">{e.time}</span>{" "}
-                <span className={e.typeCls}>{e.type}</span>{" "}
-                <span className="text-[#E8ECEF]">{e.msg}</span>{" "}
-                <span className="text-[#7A8290]">{e.meta}</span>
-              </div>
-            ))}
-          </div>
-          <div className="absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-[#06070A] to-transparent pointer-events-none" />
-          <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-[#06070A] to-transparent pointer-events-none" />
-        </div>
-      </Hud>
-
-      {/* HUD info strip */}
-      <div className="mt-2 flex items-center justify-between font-mono text-[9.5px] tracking-[0.18em] text-[#4F5664]">
-        <span>TRANSPORT: STREAMABLE-HTTP</span>
-        <span>EMBED: ALL-MINILM-L6-V2</span>
-        <span>LICENSE: APACHE-2.0</span>
+        </ul>
       </div>
+
+      {/* JSON-RPC exchange */}
+      <figure className="min-w-0 self-center">
+        <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950 shadow-elevated">
+          <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2.5">
+            <span className="font-mono text-xs text-slate-400">
+              <span className="text-emerald-400">POST</span> /mcp
+            </span>
+            <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10.5px] text-slate-300">JSON-RPC 2.0</span>
+          </div>
+          <div className="px-4 pt-3 text-[11px] font-medium uppercase tracking-wider text-slate-500">Request</div>
+          <CodeBlock code={RPC_REQUEST} className="pt-2" />
+          <div className="border-t border-slate-800 px-4 pt-3 text-[11px] font-medium uppercase tracking-wider text-slate-500">Response</div>
+          <CodeBlock code={RPC_RESPONSE} className="pt-2" />
+        </div>
+        <figcaption className="mt-3 text-center text-xs text-muted-foreground">
+          A <code className="font-mono">tools/call</code> request over Streamable HTTP.
+        </figcaption>
+      </figure>
+    </section>
+  );
+}
+
+function ArchitectureDiagram() {
+  const nodes = [
+    { title: "MCP client", items: ["Claude Desktop", "Cursor", "Any MCP-compatible client"], highlight: false },
+    { title: "Lanez server", items: ["JSON-RPC over Streamable HTTP", "Redis response cache", "PostgreSQL + pgvector"], highlight: true },
+    { title: "Microsoft Graph", items: ["Outlook mail and calendar", "OneNote", "OneDrive and SharePoint"], highlight: false },
+  ];
+  const links = ["Bearer token", "OAuth 2.0 · webhooks"];
+
+  return (
+    <div className="flex flex-col items-stretch gap-3 lg:flex-row lg:items-center">
+      {nodes.map((node, i) => (
+        <div key={node.title} className="contents">
+          <div
+            className={cn(
+              "flex-1 rounded-lg border bg-card p-5",
+              node.highlight && "border-brand/40 ring-1 ring-brand/20",
+            )}
+          >
+            <div className="text-sm font-semibold">{node.title}</div>
+            <ul className="mt-3 space-y-1.5 text-sm text-muted-foreground">
+              {node.items.map((item) => <li key={item}>{item}</li>)}
+            </ul>
+          </div>
+          {i < links.length && (
+            <div className="flex shrink-0 items-center justify-center gap-2 text-xs text-muted-foreground lg:w-32 lg:flex-col lg:gap-1">
+              <ArrowDown className="h-4 w-4 lg:hidden" />
+              <ArrowRight className="hidden h-4 w-4 lg:block" />
+              <span className="text-center">{links[i]}</span>
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
 
-function MarqueeStrip() {
-  const items = [
-    "9 MCP TOOLS", "4 M365 SERVICES", "OPEN SOURCE",
-    "SELF-HOSTED", "OAUTH 2.0 + PKCE", "SPEC MCP 2025-06-18",
-  ];
-  const rendered = items.flatMap((item, i) => [
-    <span key={`item-${i}`}><span className="text-[#22D3EE]">●</span> {item}</span>,
-    <span key={`sep-${i}`} className="text-[#4F5664]">/</span>,
-  ]);
-
+function FeaturesSection() {
   return (
-    <section className="relative border-y border-[#1B2029] py-3 overflow-hidden">
-      <div className="marquee-track font-mono text-[12px] tracking-[0.18em] text-[#7A8290] whitespace-nowrap">
-        <span className="flex items-center gap-12">{rendered}</span>
-        <span className="flex items-center gap-12" aria-hidden="true">{rendered}</span>
+    <Section
+      id="features"
+      label="Features"
+      title="More than a thin wrapper around Microsoft Graph"
+      intro="Lanez indexes your workspace, keeps context between sessions and prepares information before you need it."
+    >
+      <div className="grid gap-6 md:grid-cols-3">
+        {FEATURES.map(({ icon: Icon, title, desc, specs }) => (
+          <article key={title} className="flex flex-col rounded-lg border bg-card p-6">
+            <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-brand/10 text-brand">
+              <Icon className="h-5 w-5" />
+            </div>
+            <h3 className="mt-5 text-lg font-semibold tracking-tight">{title}</h3>
+            <p className="mt-2 flex-1 text-sm leading-relaxed text-muted-foreground">{desc}</p>
+            <dl className="mt-6 space-y-1.5 border-t pt-4 text-[13px]">
+              {specs.map(([k, v]) => (
+                <div key={k} className="flex justify-between gap-4">
+                  <dt className="text-muted-foreground">{k}</dt>
+                  <dd className="text-right font-medium">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          </article>
+        ))}
       </div>
-    </section>
+
+      <div className="mt-16">
+        <h3 className="text-sm font-semibold">Architecture</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Clients talk to Lanez over MCP; Lanez talks to Microsoft Graph and receives change notifications.
+        </p>
+        <div className="mt-6">
+          <ArchitectureDiagram />
+        </div>
+      </div>
+    </Section>
   );
 }
 
-function ModulesSection() {
-  const modules = [
-    {
-      num: "01", tag: "RETRIEVE", icon: <Search className="h-5 w-5" />,
-      title: "Hybrid search",
-      desc: "BM25 over Postgres × pgvector embeddings. One round-trip surfaces the right email, note or file — no query fan-out.",
-      stats: [{ k: "index", v: "bm25 + pgvector" }, { k: "model", v: "all-MiniLM-L6-v2" }, { k: "dims", v: "384" }],
-    },
-    {
-      num: "02", tag: "SCHEDULE", icon: <Calendar className="h-5 w-5" />,
-      title: "Event briefings",
-      desc: "Every meeting on your calendar gets a markdown briefing 15 min before — participants, prior threads, decisions.",
-      stats: [{ k: "trigger", v: "ms.graph.webhook" }, { k: "lead_time", v: "15 min" }, { k: "model", v: "claude haiku 4.5" }],
-    },
-    {
-      num: "03", tag: "RECALL", icon: <Brain className="h-5 w-5" />,
-      title: "Persistent memory",
-      desc: "Notes the agent shouldn't forget — preferences, glossaries, recurring decisions. Tagged, embedded, recallable.",
-      stats: [{ k: "store", v: "pgvector" }, { k: "embed", v: "all-MiniLM-L6-v2" }, { k: "scope", v: "user-isolated" }],
-    },
-  ] as const;
-
+function ToolsSection() {
   return (
-    <section id="modules" className="relative">
-      <div className="max-w-[1320px] mx-auto px-6 pt-24 pb-24">
-        <div className="grid grid-cols-12 gap-6 mb-12">
-          <div className="col-span-12 lg:col-span-3">
-            <span className="tag-mono"><span className="swatch" />03 MODULES</span>
-          </div>
-          <h2 className="col-span-12 lg:col-span-9 h-display text-[40px] sm:text-[56px] lg:text-[72px] text-[#E8ECEF]">
-            Three primitives.<br />
-            <span className="text-[#7A8290]">One protocol surface.</span>
-          </h2>
-        </div>
-
-        <div className="grid grid-cols-12 gap-6">
-          {modules.map((m) => (
-            <article key={m.num} className="col-span-12 md:col-span-4">
-              <Hud className="border border-[#1B2029] bg-[#0E1116]/40 p-6 h-full">
-                <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.16em] text-[#4F5664]">
-                  <span>MODULE / {m.num}</span>
-                  <span className="text-[#22D3EE]">{m.tag}</span>
-                </div>
-                <div className="mt-6 inline-flex items-center justify-center h-12 w-12 border border-[#22D3EE]/40 bg-[#22D3EE]/10 text-[#22D3EE]">
-                  {m.icon}
-                </div>
-                <h3 className="mt-5 h-display text-[24px] text-[#E8ECEF]">{m.title}</h3>
-                <p className="mt-3 text-[13.5px] leading-relaxed text-[#7A8290] font-mono">{m.desc}</p>
-                <div className="mt-5 pt-5 border-t border-[#1B2029] space-y-1.5 font-mono text-[11px]">
-                  {m.stats.map(({ k, v }) => (
-                    <div key={k} className="flex justify-between">
-                      <span className="text-[#4F5664]">{k}</span>
-                      <span className="text-[#E8ECEF] tabular-nums">{v}</span>
-                    </div>
-                  ))}
-                </div>
-              </Hud>
-            </article>
-          ))}
-        </div>
+    <Section
+      id="tools"
+      label="Tools"
+      title={`${TOOLS.length} tools exposed over MCP`}
+      intro="Every tool is discoverable through tools/list and returns plain-text content the model can cite."
+      className="bg-muted/40"
+    >
+      <div className="overflow-x-auto rounded-lg border bg-card">
+        <table className="w-full min-w-[600px] text-left text-sm">
+          <thead className="border-b bg-muted/50 text-xs text-muted-foreground">
+            <tr>
+              <th scope="col" className="px-5 py-3 font-medium">Tool</th>
+              <th scope="col" className="px-5 py-3 font-medium">Description</th>
+              <th scope="col" className="px-5 py-3 font-medium">Source</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {TOOLS.map((tool) => (
+              <tr key={tool.name}>
+                <td className="whitespace-nowrap px-5 py-3 font-mono text-[13px] font-medium">{tool.name}</td>
+                <td className="px-5 py-3 text-muted-foreground">{tool.desc}</td>
+                <td className="whitespace-nowrap px-5 py-3">
+                  <span className="rounded-md border px-2 py-0.5 text-xs text-muted-foreground">{tool.source}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
-    </section>
+    </Section>
   );
 }
 
-function ProtocolSection() {
+function SetupSection() {
+  const [client, setClient] = useState<ClientId>("claude");
   const [copied, setCopied] = useState(false);
+  const config = CLIENT_CONFIGS.find((c) => c.id === client)!;
 
-  const handleCopy = useCallback(async () => {
-    const snippet = `{
-  "mcpServers": {
-    "lanez": {
-      "command": "mcp-remote",
-      "args": [
-        "https://lanez-app.fly.dev/mcp",
-        "--header",
-        "Authorization: Bearer <token>"
-      ]
-    }
-  }
-}`;
+  async function handleCopy() {
     try {
-      await navigator.clipboard.writeText(snippet);
+      await navigator.clipboard.writeText(config.code);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch { /* silent */ }
-  }, []);
+    } catch { /* clipboard unavailable */ }
+  }
+
+  const steps = [
+    { title: "Sign in with Microsoft", desc: "Authorize Lanez with your Microsoft 365 account. Only read-only scopes are requested." },
+    { title: "Generate an access token", desc: "Create a token in Settings. It is valid for 7 days and can be regenerated at any time." },
+    { title: "Add the server to your client", desc: "Paste the configuration, replace <token> and restart the client. The tools appear automatically." },
+  ];
 
   return (
-    <section id="connect" className="relative border-t border-[#1B2029] bg-[#0A0C10]/40">
-      <div className="max-w-[1320px] mx-auto px-6 pt-24 pb-24">
-        <div className="grid grid-cols-12 gap-6 mb-12">
-          <div className="col-span-12 lg:col-span-3">
-            <span className="tag-mono"><span className="swatch" />04 PROTOCOL</span>
-          </div>
-          <h2 className="col-span-12 lg:col-span-9 h-display text-[40px] sm:text-[56px] lg:text-[72px] text-[#E8ECEF]">
-            <span className="glow-cyan"># connect</span>{" "}
-            <span className="text-[#7A8290]">in 30s.</span>
-          </h2>
-        </div>
+    <Section
+      id="setup"
+      label="Setup"
+      title="Connect your client in a few minutes"
+      intro="Lanez works with any client that supports remote MCP servers."
+    >
+      <div className="grid gap-10 lg:grid-cols-[1fr_1.3fr]">
+        <ol className="space-y-8">
+          {steps.map(({ title, desc }, i) => (
+            <li key={title} className="flex gap-4">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-card text-sm font-semibold tabular-nums">
+                {i + 1}
+              </span>
+              <div>
+                <h3 className="font-semibold">{title}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{desc}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
 
-        <div className="grid grid-cols-12 gap-6">
-          {/* Steps */}
-          <ol className="col-span-12 lg:col-span-5 space-y-3">
-            {[
-              {
-                n: "01",
-                title: "Sign in with Microsoft",
-                desc: "OAuth 2.0 + PKCE. Read-only scopes. Refresh token encrypted at rest.",
-                highlight: false,
-              },
-              {
-                n: "02",
-                title: <>Drop the snippet → <span className="font-mono text-[#22D3EE] text-[12.5px]">claude_desktop_config.json</span></>,
-                desc: "Generate a 7-day token in Settings, paste, restart Claude.",
-                highlight: true,
-              },
-              {
-                n: "03",
-                title: "Ask something only you would know",
-                desc: '"What did we decide about the Q3 launch?" — it pulls the threads, the doc, the meeting.',
-                highlight: false,
-              },
-            ].map(({ n, title, desc, highlight }) => (
-              <li key={n}>
-                <Hud
+        <div className="min-w-0 overflow-hidden rounded-xl border border-slate-800 bg-slate-950">
+          <div className="flex items-center justify-between border-b border-slate-800 pr-2">
+            <div role="tablist" aria-label="MCP client" className="flex">
+              {CLIENT_CONFIGS.map((c) => (
+                <button
+                  key={c.id}
+                  role="tab"
+                  aria-selected={client === c.id}
+                  onClick={() => { setClient(c.id); setCopied(false); }}
                   className={cn(
-                    "p-5 flex gap-4",
-                    highlight
-                      ? "border border-[#22D3EE]/40 bg-[#22D3EE]/[0.04]"
-                      : "border border-[#1B2029] bg-[#0E1116]/40",
+                    "-mb-px border-b-2 px-4 py-2.5 text-[13px] transition-colors",
+                    client === c.id
+                      ? "border-sky-400 text-slate-100"
+                      : "border-transparent text-slate-400 hover:text-slate-200",
                   )}
                 >
-                  <span className="font-mono text-[28px] text-[#22D3EE] leading-none tabular-nums">{n}</span>
-                  <div>
-                    <div className="font-bold tracking-tight text-[15px] text-[#E8ECEF]">{title}</div>
-                    <p className="mt-1 font-mono text-[12px] text-[#7A8290] leading-relaxed">{desc}</p>
-                  </div>
-                </Hud>
-              </li>
-            ))}
-          </ol>
-
-          {/* Code block */}
-          <div className="col-span-12 lg:col-span-7">
-            <Hud className="border border-[#1B2029] bg-[#06070A]/90">
-              {/* Tab strip */}
-              <div className="flex items-center justify-between border-b border-[#1B2029]">
-                <div className="flex">
-                  <button className="px-4 h-9 font-mono text-[11px] text-[#E8ECEF] border-r border-[#1B2029] bg-[#0E1116] inline-flex items-center gap-2">
-                    <span className="h-1.5 w-1.5 bg-[#22D3EE]" />
-                    claude_desktop_config.json
-                  </button>
-                  <button className="px-4 h-9 font-mono text-[11px] text-[#7A8290] hover:text-[#E8ECEF] transition-colors">
-                    cursor.json
-                  </button>
-                  <button className="px-4 h-9 font-mono text-[11px] text-[#7A8290] hover:text-[#E8ECEF] transition-colors">
-                    custom.sh
-                  </button>
-                </div>
-                <button
-                  onClick={handleCopy}
-                  className="px-3 font-mono text-[10.5px] text-[#7A8290] hover:text-[#E8ECEF] inline-flex items-center gap-1.5 transition-colors"
-                >
-                  <Copy className="h-3 w-3" />
-                  {copied ? "copied!" : "copy"}
+                  {c.label}
                 </button>
-              </div>
-
-              {/* Code with line numbers */}
-              <div className="grid grid-cols-[40px_1fr] font-mono text-[12.5px] leading-[1.7]">
-                <div className="select-none text-right pr-3 py-5 text-[#4F5664] border-r border-[#1B2029] bg-[#0A0C10]/40">
-                  {Array.from({ length: 12 }, (_, i) => <div key={i}>{i + 1}</div>)}
-                </div>
-                <pre className="px-5 py-5 overflow-x-auto text-[#E8ECEF]/85">
-                  <code>{`{`}{"\n"}
-{`  `}<span style={{ color: "#5EEAD4" }}>"mcpServers"</span>: {"{"}{"\n"}
-{`    `}<span style={{ color: "#22D3EE" }}>"lanez"</span>: {"{"}{"\n"}
-{`      `}<span style={{ color: "#5EEAD4" }}>"command"</span>: <span style={{ color: "#FF7849" }}>"mcp-remote"</span>,{"\n"}
-{`      `}<span style={{ color: "#5EEAD4" }}>"args"</span>: [{"\n"}
-{`        `}<span style={{ color: "#FF7849" }}>"https://lanez-app.fly.dev/mcp"</span>,{"\n"}
-{`        `}<span style={{ color: "#FF7849" }}>"--header"</span>,{"\n"}
-{`        `}<span style={{ color: "#FACC15" }}>"Authorization: Bearer {"<"}token{">"}"</span>{"\n"}
-{`      `}]{"\n"}
-{`    `}{"}"}{"\n"}
-{`  `}{"}"}{"\n"}
-{"}"}</code>
-                </pre>
-              </div>
-
-              {/* Status strip */}
-              <div className="border-t border-[#1B2029] px-4 h-8 flex items-center justify-between font-mono text-[10.5px] text-[#4F5664]">
-                <div className="flex items-center gap-4">
-                  <span className="text-[#22D3EE] inline-flex items-center gap-1.5">
-                    <span className="h-1.5 w-1.5 bg-[#22D3EE]" /> SHA-256 verified
-                  </span>
-                  <span>spec MCP 2025-06-18</span>
-                </div>
-                <span>token.ttl 7d · scopes: read-only</span>
-              </div>
-            </Hud>
+              ))}
+            </div>
+            <button
+              onClick={handleCopy}
+              aria-label="Copy configuration"
+              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-100"
+            >
+              {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied ? "Copied" : "Copy"}
+            </button>
           </div>
+          <div className="px-4 pt-3 font-mono text-[11px] text-slate-500">{config.file}</div>
+          <CodeBlock code={config.code} className="pt-2" />
         </div>
       </div>
-    </section>
+    </Section>
   );
 }
 
-function StackSection() {
+function SecuritySection() {
   return (
-    <section id="stack" className="relative border-t border-[#1B2029]">
-      <div className="max-w-[1320px] mx-auto px-6 pt-24 pb-24">
-        <div className="grid grid-cols-12 gap-6 mb-10">
-          <div className="col-span-12 lg:col-span-3">
-            <span className="tag-mono"><span className="swatch" />05 STACK</span>
+    <Section
+      id="security"
+      label="Security"
+      title="Designed to handle work data responsibly"
+      intro="Lanez never writes to your Microsoft 365 account, and credentials are protected end to end."
+      className="bg-muted/40"
+    >
+      <div className="grid gap-x-10 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
+        {SECURITY.map(({ icon: Icon, title, desc }) => (
+          <div key={title} className="flex gap-3">
+            <Icon className="mt-0.5 h-5 w-5 shrink-0 text-brand" />
+            <div>
+              <h3 className="text-sm font-semibold">{title}</h3>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{desc}</p>
+            </div>
           </div>
-          <h2 className="col-span-12 lg:col-span-9 h-display text-[40px] sm:text-[56px] lg:text-[72px] text-[#E8ECEF]">
-            Built from boring,<br />
-            <span className="text-[#7A8290]">battle-tested parts.</span>
-          </h2>
-        </div>
-
-        {/* Manifest table */}
-        <Hud className="border border-[#1B2029] bg-[#0E1116]/30">
-          {/* Header row */}
-          <div className="grid grid-cols-12 border-b border-[#1B2029] h-9 px-5 items-center font-mono text-[10px] tracking-[0.16em] text-[#4F5664]">
-            <div className="col-span-1">IDX</div>
-            <div className="col-span-3">COMPONENT</div>
-            <div className="col-span-2">ROLE</div>
-            <div className="col-span-2">VERSION</div>
-            <div className="col-span-3 hidden md:block">NOTES</div>
-            <div className="col-span-1 text-right">STATUS</div>
-          </div>
-
-          <div className="divide-y divide-[#1B2029]/70 font-mono text-[12px]">
-            {STACK_ROWS.map((row) => (
-              <div
-                key={row.idx}
-                className="grid grid-cols-12 px-5 py-3 items-center hover:bg-[#22D3EE]/[0.03] transition-colors"
-              >
-                <div className="col-span-1 text-[#4F5664] tabular-nums">{row.idx}</div>
-                <div className="col-span-3 text-[#E8ECEF] flex items-center gap-2">
-                  <span className="h-1.5 w-1.5 rounded-full flex-shrink-0" style={{ background: row.dot }} />
-                  {row.name}
-                </div>
-                <div className="col-span-2 text-[#7A8290]">{row.role}</div>
-                <div className="col-span-2 text-[#E8ECEF]">{row.ver}</div>
-                <div className="col-span-3 hidden md:block text-[#7A8290]">{row.notes}</div>
-                <div className="col-span-1 text-right text-[#22D3EE]">●</div>
-              </div>
-            ))}
-          </div>
-        </Hud>
+        ))}
       </div>
-    </section>
+
+      <div className="mt-16 border-t pt-10">
+        <h3 className="text-sm font-semibold">Built with</h3>
+        <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+          {STACK.map(([role, name]) => (
+            <div key={role}>
+              <dt className="text-xs text-muted-foreground">{role}</dt>
+              <dd className="mt-0.5 text-sm font-medium">{name}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </Section>
   );
 }
 
-function EndSection({ onLogin, isRedirecting }: { onLogin: () => void; isRedirecting: boolean }) {
+function ClosingSection({ onLogin, isRedirecting }: { onLogin: () => void; isRedirecting: boolean }) {
   return (
-    <section className="relative border-t border-[#1B2029]">
-      <div className="max-w-[1320px] mx-auto px-6 pt-24 pb-20">
-        <div className="grid grid-cols-12 gap-6 items-end">
-          <div className="col-span-12 lg:col-span-8">
-            <span className="tag-mono"><span className="swatch" />END / TRANSMISSION</span>
-            <h2 className="mt-4 h-display text-[44px] sm:text-[64px] lg:text-[88px]">
-              <span className="text-grad-lp">Drop the snippet.</span><br />
-              <span className="glow-cyan">Ask anything.</span>
-            </h2>
-            <p className="mt-6 max-w-[520px] font-mono text-[13px] text-[#7A8290] leading-relaxed">
-              A portfolio piece by one developer. Self-host it, fork it, send a PR.
-              Or just press the green button and watch.
+    <section className="border-t">
+      <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+        <div className="flex flex-col gap-8 rounded-xl border bg-card p-8 sm:p-10 lg:flex-row lg:items-center lg:justify-between">
+          <div className="max-w-xl">
+            <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Run Lanez on your own infrastructure</h2>
+            <p className="mt-3 text-muted-foreground">
+              Released under the MIT license. Deploy it with Docker Compose, adapt it to your
+              tenant, or contribute on GitHub.
             </p>
           </div>
-
-          <div className="col-span-12 lg:col-span-4 flex flex-col gap-3">
-            <a
-              href="#connect"
-              className="btn-phos rounded-md px-5 py-4 text-[14px] font-bold tracking-wide font-mono inline-flex items-center justify-between gap-2 uppercase"
-            >
-              <span className="inline-flex items-center gap-2">
-                <Play className="h-3.5 w-3.5" /> run.demo()
-              </span>
-              <span className="opacity-70">→</span>
-            </a>
+          <div className="flex flex-wrap gap-3">
             <a
               href={GITHUB_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="btn-ghost-lp rounded-md px-5 py-4 text-[14px] font-bold tracking-wide font-mono inline-flex items-center justify-between gap-2 uppercase"
+              className={cn(buttonVariants({ size: "lg" }), "h-11")}
             >
-              <span className="inline-flex items-center gap-2">
-                <Terminal className="h-3.5 w-3.5" /> read.source()
-              </span>
-              <span className="opacity-70">↗</span>
+              <GithubIcon className="h-4 w-4" />
+              View on GitHub
             </a>
             <button
               onClick={onLogin}
               disabled={isRedirecting}
-              className="btn-ghost-lp rounded-md px-5 py-4 text-[14px] font-bold tracking-wide font-mono inline-flex items-center justify-between gap-2 uppercase"
+              className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-11")}
             >
-              <span className="inline-flex items-center gap-2">
-                {isRedirecting
-                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  : <User className="h-3.5 w-3.5" />}
-                <span className="sr-only">Admin login</span>
-                <span aria-hidden="true">admin.login()</span>
-              </span>
-              <span className="opacity-70">→</span>
+              {isRedirecting && <Loader2 className="h-4 w-4 animate-spin" />}
+              Sign in
             </button>
           </div>
         </div>
@@ -587,29 +589,22 @@ function EndSection({ onLogin, isRedirecting }: { onLogin: () => void; isRedirec
   );
 }
 
-function StatusBar() {
+function SiteFooter() {
   return (
-    <footer className="sticky bottom-0 border-t border-[#1B2029] bg-[#06070A]/95 backdrop-blur-xl">
-      <div className="max-w-[1320px] mx-auto px-6 h-9 flex items-center justify-between font-mono text-[10.5px] text-[#7A8290]">
-        <div className="flex items-center gap-5">
-          <span className="inline-flex items-center gap-2">
-            <span className="h-1.5 w-1.5 bg-[#22D3EE] shadow-[0_0_8px_rgba(34,211,238,0.7)]" />
-            <span className="text-[#22D3EE]">CONNECTED</span>
-          </span>
+    <footer className="border-t">
+      <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div className="flex items-center gap-2">
+          <LanezMark className="h-5 w-5" />
           <span>
-            built by{" "}
-            <a href="https://lanez.pt" className="text-[#E8ECEF] hover:text-[#22D3EE] transition-colors">
-              Lucas Milanez
-            </a>
+            © {new Date().getFullYear()}{" "}
+            <a href="https://lanez.pt" className="text-foreground hover:underline">Lucas Milanez</a>
+            {" "}· MIT License
           </span>
-          <span className="hidden sm:inline">lanez.pt</span>
-          <span className="hidden md:inline">apache 2.0</span>
         </div>
-        <div className="flex items-center gap-5">
-          <span className="hidden md:inline">MCP 2025-06-18</span>
-          <span className="hidden sm:inline">apache 2.0</span>
-          <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="hover:text-[#22D3EE] transition-colors">github ↗</a>
-        </div>
+        <nav aria-label="Footer" className="flex gap-6">
+          <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="hover:text-foreground">GitHub</a>
+          <a href={MCP_SPEC_URL} target="_blank" rel="noopener noreferrer" className="hover:text-foreground">MCP specification</a>
+        </nav>
       </div>
     </footer>
   );
@@ -631,123 +626,35 @@ export function LoginPage() {
   if (user) return <Navigate to="/dashboard" replace />;
 
   return (
-    <div className="min-h-screen" style={{ background: "#06070A", color: "#E8ECEF" }}>
+    <div className="min-h-screen bg-background text-foreground">
       <SiteHeader onLogin={handleLogin} isRedirecting={isRedirecting} />
 
-      {/* ── HERO ─────────────────────────────────────────────────── */}
-      <section id="overview" className="relative overflow-hidden">
-        <div className="absolute inset-0 hero-glow pointer-events-none" />
-        <div className="absolute inset-0 bg-grid pointer-events-none opacity-50" />
-        <div className="absolute inset-0 bg-scan pointer-events-none" />
-        <div className="absolute inset-0 lp-vignette pointer-events-none" />
-
-        <div className="relative max-w-[1320px] mx-auto px-6 pt-14 pb-20 grid grid-cols-12 gap-6">
-          {/* Left column */}
-          <div className="col-span-12 lg:col-span-7 relative">
-            <div className="flex items-center justify-between mb-7">
-              <span className="tag-mono"><span className="swatch" /> NODE 001 / PORTFOLIO_PIECE</span>
-              <span className="font-mono text-[10px] text-[#4F5664] hidden sm:inline">SPEC MCP 2025-06-18</span>
-            </div>
-
-            <h1 className="h-display text-[64px] sm:text-[88px] lg:text-[108px] text-[#E8ECEF]">
-              <span className="block">M365</span>
-              <span className="block flex items-end gap-3">
-                <span className="text-grad-lp">as context</span>
-                <span className="hidden sm:inline-block w-12 h-[2px] bg-[#22D3EE] mb-7" />
-              </span>
-              <span className="block">
-                for any{" "}
-                <span className="glow-cyan">
-                  AI<span className="caret" />
-                </span>
-              </span>
-            </h1>
-
-            {/* Subline */}
-            <div className="mt-8 max-w-[520px] grid grid-cols-[12px_1fr] gap-x-3">
-              <span className="block w-[2px] bg-[#22D3EE] mt-1" />
-              <p className="font-mono text-[13px] leading-[1.7] text-[#7A8290]">
-                A self-hosted MCP server bridging{" "}
-                <span className="text-[#E8ECEF]">Calendar · Mail · OneNote · OneDrive</span>{" "}
-                into Claude Desktop or any MCP-aware client.
-                pgvector semantic search. Read-only scopes.
-                Runs on a $5 droplet.
-              </p>
-            </div>
-
-            {/* CTAs */}
-            <div className="mt-9 flex flex-wrap items-center gap-3">
-              <a
-                href="#connect"
-                className="btn-phos rounded-md px-5 py-3 text-[13px] font-bold tracking-wide font-mono inline-flex items-center gap-2 uppercase"
-              >
-                <Play className="h-3.5 w-3.5" />
-                run.demo() <span className="opacity-60">·60s</span>
-              </a>
-              <a
-                href={GITHUB_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn-ghost-lp rounded-md px-5 py-3 text-[13px] font-semibold font-mono inline-flex items-center gap-2 uppercase"
-              >
-                <Terminal className="h-3.5 w-3.5" />
-                read.source()
-              </a>
-            </div>
-
-            {/* Trust grid */}
-            <div className="mt-12 grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-4 max-w-[640px]">
-              {[
-                { label: "AUTH",   value: "OAuth 2.0 + PKCE" },
-                { label: "SCOPE",  value: "Read-only" },
-                { label: "CRYPTO", value: "Fernet AES-256" },
-                { label: "KDF",    value: "PBKDF2 480k" },
-              ].map(({ label, value }) => (
-                <div key={label}>
-                  <div className="font-mono text-[9.5px] tracking-[0.18em] text-[#4F5664]">{label}</div>
-                  <div className="font-mono text-[12px] text-[#E8ECEF]/90 mt-1">{value}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Right column — Telemetry HUD */}
-          <TelemetryHUD />
-        </div>
-
-        {/* ASCII divider */}
-        <div className="relative max-w-[1320px] mx-auto px-6">
-          <div className="font-mono text-[10px] text-[#4F5664]/60 select-none whitespace-pre overflow-hidden">
-            {"▌────  ────  ────  ────  ────  ────  ────  ────  ────  ────  ────  ────  ────  ────  ────  ────  ────  ────  ────  ────  ────  ────"}
-          </div>
-        </div>
-      </section>
-
-      <MarqueeStrip />
-      <ModulesSection />
-      <ProtocolSection />
-      <StackSection />
-
-      {/* Error alert */}
       {errorParam && (
-        <div className="max-w-[1320px] mx-auto px-6 pb-6">
+        <div className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
           <div
             role="alert"
-            className="flex items-start gap-2.5 rounded-xl border border-[#EF4444]/25 bg-[#EF4444]/[0.04] px-3.5 py-3 max-w-md"
+            className="flex max-w-md items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3.5 py-3"
           >
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#EF4444]" />
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
             <div>
-              <p className="font-medium text-[13px] text-[#EF4444]">Authentication failed</p>
-              <p className="text-[11px] text-[#EF4444]/80 mt-0.5">
-                Check your Microsoft account and try again.
+              <p className="text-sm font-medium text-destructive">Sign-in failed</p>
+              <p className="mt-0.5 text-[13px] text-muted-foreground">
+                We couldn't complete authentication with Microsoft. Please try again.
               </p>
             </div>
           </div>
         </div>
       )}
 
-      <EndSection onLogin={handleLogin} isRedirecting={isRedirecting} />
-      <StatusBar />
+      <main>
+        <Hero />
+        <FeaturesSection />
+        <ToolsSection />
+        <SetupSection />
+        <SecuritySection />
+        <ClosingSection onLogin={handleLogin} isRedirecting={isRedirecting} />
+      </main>
+      <SiteFooter />
     </div>
   );
 }
